@@ -1,6 +1,23 @@
 const express = require('express');
 const app = express();
+
+const verifyJWT = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  if (!authorization) {
+    return res.status(401).send({ error: true, message: "unauthorized access" });
+  }
+  const token = authorization.split(' ')[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ error: true, message: "unauthorized access" });
+    }
+    req.decoded = decoded;
+    next();
+  })
+}
+
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const jwt = require('jsonwebtoken');
 const cors = require('cors');
 require('dotenv').config();
 const port = process.env.PORT || 5000
@@ -8,8 +25,8 @@ const port = process.env.PORT || 5000
 app.use(cors());
 app.use(express.json());
 
-app.get("/",(req,res)=>{
-    res.send("Order Is coming")
+app.get("/", (req, res) => {
+  res.send("Order Is coming")
 })
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.zvd8xno.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -33,58 +50,101 @@ async function run() {
     const reviewCollection = database.collection("reviews");
     const cartCollection = database.collection("carts");
 
-    // User  api
+    // jwt api
 
-    app.post('/users',async(req,res)=>{
-      const user =req.body;
+    app.post('/jwt', (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+      res.send({ token });
+    })
+
+    // User  api
+    app.get("/users", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result)
+    })
+
+
+
+    app.post('/users', async (req, res) => {
+      const user = req.body;
       console.log(user);
-      const query = {email: user.email};
+      const query = { email: user.email };
       const existingUser = await usersCollection.findOne(query);
-      if(existingUser){
-        return res.send({message: "User Already Exist"});
+      if (existingUser) {
+        return res.send({ message: "User Already Exist" });
       }
       const result = await usersCollection.insertOne(user);
       res.send(result);
     })
 
-    // Menu api
-    app.get("/menu", async(req,res)=>{
-        const result =await menuCollection.find().toArray();
-
-        res.send(result)
-    })
-
-    // Reviews api
-    app.get("/reviews", async(req,res)=>{
-        const result =await reviewCollection.find().toArray();
-        res.send(result)
-    })
-
-    // Cart api
-    app.get('/carts',async(req,res)=>{
-      const email = req.query.email;
-      if(!email){
-        return res.send([]);
+    app.get('/users/admin/:email',verifyJWT,async(req,res)=>{
+      const email = req.params.email;
+      if(email !== req.decoded.email){
+        res.send({admin:false});
       }
-      const query = { email: email };
-      const result = await cartCollection.find(query).toArray();
+      const query = {email: email};
+      const user = await usersCollection.findOne(query);
+      const result = {admin:user?.role === 'admin'}
       res.send(result);
     })
 
-    app.post('/carts',async(req,res)=>{
-      const item =req.body;
+    app.patch('/users/admin/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          role: "admin"
+        },
+      };
+      const result = await usersCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    })
+
+    // Menu api
+    app.get("/menu", async (req, res) => {
+      const result = await menuCollection.find().toArray();
+
+      res.send(result)
+    })
+
+    // Reviews api
+    app.get("/reviews", async (req, res) => {
+      const result = await reviewCollection.find().toArray();
+      res.send(result)
+    })
+
+    // Cart api
+    app.get('/carts', verifyJWT, async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        return res.send([]);
+      }
+
+      const decodedEmil = req.decoded.email;
+      if (decodedEmil === email) {
+        const query = { email: email };
+        const result = await cartCollection.find(query).toArray();
+        res.send(result);
+      } else {
+        return res.status(401).send({ error: true, message: "unauthorized access" });
+      }
+    })
+
+    app.post('/carts', async (req, res) => {
+      const item = req.body;
       console.log(item);
       const result = await cartCollection.insertOne(item);
       res.send(result);
     })
 
-    app.delete("/carts/:id",async(req,res)=>{
+    app.delete("/carts/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await cartCollection.deleteOne(query);
       res.send(result);
     })
-   
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
@@ -100,6 +160,6 @@ run().catch(console.dir);
 
 
 
-app.listen(port,()=>{
-    console.log(`Server is running on port ${port}`)
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`)
 })
