@@ -54,19 +54,30 @@ async function run() {
 
     app.post('/jwt', (req, res) => {
       const user = req.body;
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
       res.send({ token });
     })
 
+    // Verify admin
+    const verifyAdmin =async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = {email: email};
+      const result = await usersCollection.findOne(query);
+      if(result?.role !== 'admin'){
+        return res.status(403).send({ error: true, message: "forbidden access" });
+      }
+      next();
+    }
+
     // User  api
-    app.get("/users", async (req, res) => {
+    app.get("/users",verifyJWT,verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result)
     })
 
 
 
-    app.post('/users', async (req, res) => {
+    app.post('/users',async (req, res) => {
       const user = req.body;
       console.log(user);
       const query = { email: user.email };
