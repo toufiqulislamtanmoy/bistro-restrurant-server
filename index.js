@@ -1,5 +1,7 @@
 const express = require('express');
 const app = express();
+const stripe = require("stripe")(process.env.GETWAY_SECRET_TOKEN);
+
 
 const verifyJWT = (req, res, next) => {
   const authorization = req.headers.authorization;
@@ -59,25 +61,25 @@ async function run() {
     })
 
     // Verify admin
-    const verifyAdmin =async (req, res, next) => {
+    const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
-      const query = {email: email};
+      const query = { email: email };
       const result = await usersCollection.findOne(query);
-      if(result?.role !== 'admin'){
+      if (result?.role !== 'admin') {
         return res.status(403).send({ error: true, message: "forbidden access" });
       }
       next();
     }
 
     // User  api
-    app.get("/users",verifyJWT,verifyAdmin, async (req, res) => {
+    app.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result)
     })
 
 
 
-    app.post('/users',async (req, res) => {
+    app.post('/users', async (req, res) => {
       const user = req.body;
       console.log(user);
       const query = { email: user.email };
@@ -89,14 +91,14 @@ async function run() {
       res.send(result);
     })
 
-    app.get('/users/admin/:email',verifyJWT,async(req,res)=>{
+    app.get('/users/admin/:email', verifyJWT, async (req, res) => {
       const email = req.params.email;
-      if(email !== req.decoded.email){
-        res.send({admin:false});
+      if (email !== req.decoded.email) {
+        res.send({ admin: false });
       }
-      const query = {email: email};
+      const query = { email: email };
       const user = await usersCollection.findOne(query);
-      const result = {admin:user?.role === 'admin'}
+      const result = { admin: user?.role === 'admin' }
       res.send(result);
     })
 
@@ -118,15 +120,15 @@ async function run() {
       res.send(result)
     })
     // Post menu api
-    app.post("/menu",verifyJWT,verifyAdmin, async (req, res) => {
+    app.post("/menu", verifyJWT, verifyAdmin, async (req, res) => {
       const newItem = req.body;
       const result = await menuCollection.insertOne(newItem);
       res.send(result)
     })
     // Delete menu api
-    app.delete("/menu/:id",verifyJWT,verifyAdmin,async(req,res)=>{
+    app.delete("/menu/:id", verifyJWT, verifyAdmin, async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)};
+      const query = { _id: new ObjectId(id) };
       const result = await menuCollection.deleteOne(query);
       res.send(result);
     })
@@ -166,6 +168,20 @@ async function run() {
       const query = { _id: new ObjectId(id) };
       const result = await cartCollection.deleteOne(query);
       res.send(result);
+    })
+
+    // payment getway api
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = price * 100;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
     })
 
     // Send a ping to confirm a successful connection
