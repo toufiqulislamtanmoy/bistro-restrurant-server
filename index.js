@@ -118,10 +118,17 @@ async function run() {
       res.send(result)
     })
     // Post menu api
-    app.get("/menu", async (req, res) => {
+    app.post("/menu",verifyJWT,verifyAdmin, async (req, res) => {
       const newItem = req.body;
       const result = await menuCollection.insertOne(newItem);
       res.send(result)
+    })
+    // Delete menu api
+    app.delete("/menu/:id",verifyJWT,verifyAdmin,async(req,res)=>{
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)};
+      const result = await menuCollection.deleteOne(query);
+      res.send(result);
     })
 
     // Reviews api
